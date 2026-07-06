@@ -255,7 +255,7 @@ function star(x,y,R,fill,stroke){
 // it's clearly not one of the star-shaped bookmark markers.
 function sunSymbol(x,y,R,fill){
   const g = ctx.createRadialGradient(x,y,R*0.4,x,y,R*1.9);
-  g.addColorStop(0,"rgba(232,163,23,0.75)");
+  g.addColorStop(0,"rgba(232,163,23,0.45)");
   g.addColorStop(1,"rgba(232,163,23,0)");
   ctx.fillStyle=g;
   ctx.beginPath(); ctx.arc(x,y,R*1.9,0,6.2832); ctx.fill();
@@ -623,7 +623,7 @@ function drawWarpArrows(recipe){
     const tipy = a.sy + (dest.sy-a.sy)*prog;
 
     // shaft: full line from source to the destination celestial you warp to
-    ctx.strokeStyle = "rgba(90,100,115,0.75)";
+    ctx.strokeStyle = "rgba(90,100,115,0.45)";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.moveTo(a.sx, a.sy);
@@ -782,6 +782,9 @@ function drawGateLabels(labels){
     ctx.fillText(L.text, tx, ty);
   }
   ctx.restore();
+
+  // Keep the per-gate 3D clearance spheres in sync with the camera.
+  if(dials.length) drawGateSpheres();
 }
 
 function drawOrientationBall(){
@@ -946,66 +949,95 @@ function buildDials(){
   S.gates.forEach((g,k) => {
     const others = othersOf(k);
     const box = document.createElement("div"); box.className = "dial";
-    const title = document.createElement("div"); title.className = "dtitle"; title.style.color = g.color; box.appendChild(title);
-    const D = 164, cx = D/2, cy = D/2, R = D/2 - 14;
-    const svg = eln("svg", {width:D, height:D}); box.appendChild(svg); grid.appendChild(box);
+    const title = document.createElement("div"); title.className = "dtitle"; title.style.color = g.color;
+    box.appendChild(title);
+    const D = 164;
+    const cv = document.createElement("canvas");
+    cv.width = D; cv.height = D; cv.style.width = D+"px"; cv.style.height = D+"px";
+    box.appendChild(cv); grid.appendChild(box);
 
-    const e1 = unit(sub(others[0].pos, g.pos));
-    let ref = others.length > 1 ? sub(others[1].pos, g.pos) : {x:e1.y,y:-e1.x,z:0};
-    let e2 = {x:ref.x-dot(ref,e1)*e1.x, y:ref.y-dot(ref,e1)*e1.y, z:ref.z-dot(ref,e1)*e1.z};
-    if(nrm(e2) < 1e-9) e2 = Math.abs(e1.z) < 0.9 ? unit({x:-e1.y,y:e1.x,z:0}) : {x:1,y:0,z:0};
-    else e2 = unit(e2);
-    const bear = v => Math.atan2(dot(v,e2), dot(v,e1));
-    const phis = others.map(o => bear(sub(o.pos, g.pos)));
+    // Unit directions from this gate toward every other gate — the axes whose
+    // surrounding cones are UNSAFE.  A warp-in direction is safe when its angle
+    // to all of these exceeds the threshold.
+    const axes = others.map(o => unit(sub(o.pos, g.pos)));
+    dials.push({gateIndex:k, g, others, axes, cv, ctx:cv.getContext("2d"), D, title});
+  });
+  drawGateSpheres();
+}
 
-    const Nn = 360;
-    const ok = [];
-    for(let i=0;i<Nn;i++){
-      const b = i*Math.PI/180;
-      let m = Infinity;
-      for(const ph of phis){
-        const x = Math.acos(Math.min(1, Math.abs(Math.cos(b-ph)))) * 180 / Math.PI;
-        if(x < m) m = x;
+// Draw the safe-direction region as a shaded area on a small 3D sphere, one per
+// gate, oriented by the same camera rotation as the main map.  Green = warp-in
+// directions that clear the threshold against every gate-to-gate line; the black
+// marker is the current bookmark's direction.
+function drawGateSpheres(){
+  if(!S || !dials.length) return;
+  const thrCos = Math.cos(THR*Math.PI/180);
+  dials.forEach(d => {
+    const ctx = d.ctx, D = d.D, R = D/2 - 12, cx = D/2, cy = D/2;
+    ctx.clearRect(0,0,D,D);
+
+    // Rotate a world direction by the shared camera matrix; screen y flipped.
+    const rot = v => { const r = matVec(camRot, {x:v.x,y:v.y,z:v.z}); return {x:r.x,y:r.y,z:r.z}; };
+
+    // backing disc (the sphere silhouette)
+    ctx.beginPath(); ctx.arc(cx,cy,R,0,6.2832);
+    ctx.fillStyle = "rgba(15,20,25,0.05)"; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(15,20,25,0.18)"; ctx.stroke();
+
+    // Sample the sphere surface; shade safe points green. Only draw the front
+    // hemisphere (rotated z >= 0) so it reads as a solid ball.
+    const step = 8;                       // degrees between samples
+    for(let plat=-80; plat<=80; plat+=step){
+      const la = plat*Math.PI/180, cla = Math.cos(la), sla = Math.sin(la);
+      for(let plon=0; plon<360; plon+=step){
+        const lo = plon*Math.PI/180;
+        const w = {x:cla*Math.cos(lo), y:sla, z:cla*Math.sin(lo)};   // world dir
+        // safe test against the true 3D axes (undirected: abs of dot)
+        let safe = true;
+        for(const a of d.axes){
+          const c = Math.abs(w.x*a.x + w.y*a.y + w.z*a.z);
+          if(c > thrCos){ safe = false; break; }   // within THR of a gate line -> unsafe
+        }
+        const r = rot(w);
+        if(r.z < 0) continue;                        // back hemisphere hidden
+        const ex = cx + r.x*R, ey = cy - r.y*R;
+        const shade = 0.35 + 0.65*r.z;               // fade toward the rim
+        if(safe){
+          ctx.fillStyle = `rgba(63,163,77,${0.5*shade})`;
+          ctx.fillRect(ex-2.2, ey-2.2, 4.4, 4.4);
+        }
       }
-      ok.push(m >= THR);
     }
-    let i = 0;
-    while(i < Nn){
-      if(ok[i]){
-        let j = i;
-        while(j < Nn && ok[j]) j++;
-        const r0 = i*Math.PI/180, r1 = j*Math.PI/180, large = (j-i)>180 ? 1 : 0;
-        const x0 = cx + R*Math.cos(r0), y0 = cy - R*Math.sin(r0);
-        const x1 = cx + R*Math.cos(r1), y1 = cy - R*Math.sin(r1);
-        svg.appendChild(eln("path", {d:`M ${cx} ${cy} L ${x0} ${y0} A ${R} ${R} 0 ${large} 0 ${x1} ${y1} Z`, fill:"#3fa34d", opacity:.30}));
-        i = j;
-      } else i++;
+
+    // gate-to-gate axis tips (the unsafe centers) as small colored dots
+    for(const a of d.axes){
+      for(const s of [1,-1]){
+        const r = rot({x:a.x*s, y:a.y*s, z:a.z*s});
+        if(r.z < 0) continue;
+        ctx.beginPath(); ctx.arc(cx + r.x*R, cy - r.y*R, 2.6, 0, 6.2832);
+        ctx.fillStyle = "rgba(209,73,91,0.9)"; ctx.fill();
+      }
     }
-    phis.forEach(ph => {
-      [ph, ph+Math.PI].forEach(pp => svg.appendChild(eln("line", {x1:cx,y1:cy,x2:cx+R*Math.cos(pp),y2:cy-R*Math.sin(pp),stroke:"#8a94a0","stroke-dasharray":"3 3","stroke-width":1})));
-    });
-    svg.appendChild(eln("circle", {cx,cy,r:R,fill:"none",stroke:"#cbd5e0"}));
-    const mk = eln("line", {x1:cx,y1:cy,x2:cx,y2:cy,stroke:"#111","stroke-width":2.4}); svg.appendChild(mk);
-    const mdot = eln("circle", {cx,cy,r:5,fill:"#111",stroke:"#fff","stroke-width":1.2}); svg.appendChild(mdot);
-    dials.push({gateIndex:k, g, others, cx, cy, R, mk, mdot, title, bear});
+
+    // current bookmark direction marker
+    const bmDir = unit(sub(BM, d.g.pos));
+    const cl = clearanceLocal(BM, d.g, d.others);
+    const col = cl >= THR ? "#2e8b57" : "#c0392b";
+    const rb = rot(bmDir);
+    const bx = cx + rb.x*R, by = cy - rb.y*R;
+    // draw a small ring; filled if on the front, hollow if it's around the back
+    ctx.beginPath(); ctx.arc(bx, by, 5, 0, 6.2832);
+    if(rb.z >= 0){ ctx.fillStyle = col; ctx.fill(); ctx.lineWidth=1.4; ctx.strokeStyle="#fff"; ctx.stroke(); }
+    else { ctx.lineWidth=1.6; ctx.strokeStyle=col; ctx.stroke(); }
+
+    d.title.textContent = `${d.g.name} — ${cl.toFixed(0)}°`;
   });
 }
 function updateDials(info){
   if(!S || !dials.length) return;
-  const perGate = info ? info.per_gate : localClearanceInfo(BM).per_gate;
-  dials.forEach(d => {
-    const pg = perGate.find(x => x.gateIndex === d.gateIndex);
-    const cl = pg ? pg.clearance : clearanceLocal(BM, d.g, d.others);
-    const b = d.bear(sub(BM, d.g.pos));
-    const col = cl >= THR ? "#2e8b57" : "#c0392b";
-    d.mk.setAttribute("x2", d.cx + d.R*Math.cos(b));
-    d.mk.setAttribute("y2", d.cy - d.R*Math.sin(b));
-    d.mk.setAttribute("stroke", col);
-    d.mdot.setAttribute("cx", d.cx + d.R*Math.cos(b));
-    d.mdot.setAttribute("cy", d.cy - d.R*Math.sin(b));
-    d.mdot.setAttribute("fill", col);
-    d.title.textContent = `${d.g.name} — ${cl.toFixed(0)}°`;
-  });
+  // The sphere draw recomputes clearance and the marker from BM directly, so we
+  // just trigger a redraw.  (info is accepted for call-site compatibility.)
+  drawGateSpheres();
 }
 
 async function fetchRegions(preferredRegion="The Forge"){

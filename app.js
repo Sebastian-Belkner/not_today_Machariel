@@ -623,7 +623,7 @@ function drawWarpArrows(recipe){
     const tipy = a.sy + (dest.sy-a.sy)*prog;
 
     // shaft: full line from source to the destination celestial you warp to
-    ctx.strokeStyle = "rgba(90,100,115,0.45)";
+    ctx.strokeStyle = "rgba(90,100,115,0.75)";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.moveTo(a.sx, a.sy);

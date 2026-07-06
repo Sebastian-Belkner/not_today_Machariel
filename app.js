@@ -603,7 +603,7 @@ function drawWarpArrows(recipe){
     const tipy = a.sy + (dest.sy-a.sy)*prog;
 
     // shaft: full line from source to the destination celestial you warp to
-    ctx.strokeStyle = "rgba(17,17,17,0.85)";
+    ctx.strokeStyle = "rgba(90,100,115,0.45)";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.moveTo(a.sx, a.sy);
@@ -614,7 +614,7 @@ function drawWarpArrows(recipe){
     if(prog > 0.98){
       const ang = Math.atan2(dest.sy-a.sy, dest.sx-a.sx);
       const hl = 11, hw = Math.PI/7;
-      ctx.fillStyle = "rgba(17,17,17,0.9)";
+      ctx.fillStyle = "rgba(90,100,115,0.55)";
       ctx.beginPath();
       ctx.moveTo(dest.sx, dest.sy);
       ctx.lineTo(dest.sx - hl*Math.cos(ang-hw), dest.sy - hl*Math.sin(ang-hw));
@@ -1076,6 +1076,10 @@ async function loadSolution(){
   document.getElementById("meta").textContent = `${S.name}${S.region ? " · "+S.region : ""} · ${secLabel(S.security)} · ${solution.meta.planets}p ${solution.meta.moons}m ${solution.meta.gates}g${timing}`;
   updateWarnBanner();
   render();
+  // Show the warp-step arrows for the initial auto-picked bookmark, same as a
+  // drag would.  fetchDraggedRecipe snaps to the nearest buildable recipe (which
+  // for the single-solution point is itself) and animates its legs.
+  fetchDraggedRecipe();
 }
 
 function updateWarnBanner(){

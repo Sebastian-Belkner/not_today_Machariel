@@ -976,40 +976,53 @@ function drawGateSpheres(){
     const ctx = d.ctx, D = d.D, R = D/2 - 12, cx = D/2, cy = D/2;
     ctx.clearRect(0,0,D,D);
 
-    // Rotate a world direction by the shared camera matrix; screen y flipped.
-    const rot = v => { const r = matVec(camRot, {x:v.x,y:v.y,z:v.z}); return {x:r.x,y:r.y,z:r.z}; };
+    const rot = v => matVec(camRot, {x:v.x,y:v.y,z:v.z});
+    const sphPt = (la,lo) => {                     // lat/lon (rad) -> world dir
+      const cla=Math.cos(la);
+      return {x:cla*Math.cos(lo), y:Math.sin(la), z:cla*Math.sin(lo)};
+    };
+    const isSafe = w => {
+      for(const a of d.axes){ if(Math.abs(w.x*a.x+w.y*a.y+w.z*a.z) > thrCos) return false; }
+      return true;
+    };
 
-    // backing disc (the sphere silhouette)
+    // backing disc (sphere silhouette)
     ctx.beginPath(); ctx.arc(cx,cy,R,0,6.2832);
     ctx.fillStyle = "rgba(15,20,25,0.05)"; ctx.fill();
     ctx.lineWidth = 1; ctx.strokeStyle = "rgba(15,20,25,0.18)"; ctx.stroke();
 
-    // Sample the sphere surface; shade safe points green. Only draw the front
-    // hemisphere (rotated z >= 0) so it reads as a solid ball.
-    const step = 8;                       // degrees between samples
-    for(let plat=-80; plat<=80; plat+=step){
-      const la = plat*Math.PI/180, cla = Math.cos(la), sla = Math.sin(la);
-      for(let plon=0; plon<360; plon+=step){
-        const lo = plon*Math.PI/180;
-        const w = {x:cla*Math.cos(lo), y:sla, z:cla*Math.sin(lo)};   // world dir
-        // safe test against the true 3D axes (undirected: abs of dot)
-        let safe = true;
-        for(const a of d.axes){
-          const c = Math.abs(w.x*a.x + w.y*a.y + w.z*a.z);
-          if(c > thrCos){ safe = false; break; }   // within THR of a gate line -> unsafe
-        }
-        const r = rot(w);
-        if(r.z < 0) continue;                        // back hemisphere hidden
-        const ex = cx + r.x*R, ey = cy - r.y*R;
-        const shade = 0.35 + 0.65*r.z;               // fade toward the rim
-        if(safe){
-          ctx.fillStyle = `rgba(63,163,77,${0.5*shade})`;
-          ctx.fillRect(ex-2.2, ey-2.2, 4.4, 4.4);
-        }
+    // Fill the safe region as connected quad cells over a lat/lon mesh, front
+    // hemisphere only, shaded by depth so it reads as a curved surface.  Fine
+    // step keeps the boundary smooth without visible stippling.
+    const dLat = 5, dLon = 5;                       // degrees
+    for(let latD=-85; latD<85; latD+=dLat){
+      const la0=latD*Math.PI/180, la1=(latD+dLat)*Math.PI/180;
+      for(let lonD=0; lonD<360; lonD+=dLon){
+        const lo0=lonD*Math.PI/180, lo1=(lonD+dLon)*Math.PI/180;
+        // cell center safety + facing
+        const cW = sphPt((la0+la1)/2, (lo0+lo1)/2);
+        if(!isSafe(cW)) continue;
+        const cr = rot(cW);
+        if(cr.z < 0) continue;                       // back hemisphere hidden
+        // four corners projected
+        const c00=rot(sphPt(la0,lo0)), c01=rot(sphPt(la0,lo1)),
+              c11=rot(sphPt(la1,lo1)), c10=rot(sphPt(la1,lo0));
+        const shade = 0.30 + 0.70*Math.max(0,cr.z);
+        ctx.beginPath();
+        ctx.moveTo(cx+c00.x*R, cy-c00.y*R);
+        ctx.lineTo(cx+c01.x*R, cy-c01.y*R);
+        ctx.lineTo(cx+c11.x*R, cy-c11.y*R);
+        ctx.lineTo(cx+c10.x*R, cy-c10.y*R);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(63,163,77,${0.55*shade})`;
+        ctx.fill();
+        // slight same-color stroke closes hairline seams between cells
+        ctx.strokeStyle = `rgba(63,163,77,${0.55*shade})`;
+        ctx.lineWidth = 0.6; ctx.stroke();
       }
     }
 
-    // gate-to-gate axis tips (the unsafe centers) as small colored dots
+    // gate-to-gate axis tips (unsafe centers)
     for(const a of d.axes){
       for(const s of [1,-1]){
         const r = rot({x:a.x*s, y:a.y*s, z:a.z*s});
@@ -1019,16 +1032,29 @@ function drawGateSpheres(){
       }
     }
 
-    // current bookmark direction marker
+    // Current bookmark warp-in direction: a spoke from sphere centre out to the
+    // surface point, so it clearly reads as "you come in from THIS direction".
     const bmDir = unit(sub(BM, d.g.pos));
     const cl = clearanceLocal(BM, d.g, d.others);
     const col = cl >= THR ? "#2e8b57" : "#c0392b";
     const rb = rot(bmDir);
     const bx = cx + rb.x*R, by = cy - rb.y*R;
-    // draw a small ring; filled if on the front, hollow if it's around the back
-    ctx.beginPath(); ctx.arc(bx, by, 5, 0, 6.2832);
-    if(rb.z >= 0){ ctx.fillStyle = col; ctx.fill(); ctx.lineWidth=1.4; ctx.strokeStyle="#fff"; ctx.stroke(); }
+    const front = rb.z >= 0;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(bx, by);
+    ctx.lineWidth = front ? 2.6 : 1.4;
+    ctx.strokeStyle = col;
+    ctx.globalAlpha = front ? 1 : 0.4;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // tip marker
+    ctx.beginPath(); ctx.arc(bx, by, front ? 5 : 3.5, 0, 6.2832);
+    if(front){ ctx.fillStyle = col; ctx.fill(); ctx.lineWidth=1.4; ctx.strokeStyle="#fff"; ctx.stroke(); }
     else { ctx.lineWidth=1.6; ctx.strokeStyle=col; ctx.stroke(); }
+    // centre pip
+    ctx.beginPath(); ctx.arc(cx, cy, 1.8, 0, 6.2832);
+    ctx.fillStyle = "#0f1419"; ctx.fill();
 
     d.title.textContent = `${d.g.name} — ${cl.toFixed(0)}°`;
   });

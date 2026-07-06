@@ -131,14 +131,14 @@ function clearanceToGate(p, gpos, otherDirs){
   const n=Math.sqrt(dx*dx+dy*dy+dz*dz);
   if(n<0.05) return -1.0;
   if(!otherDirs.length) return -1.0;
-  const inv=1/n, ux=dx*inv, uy=dy*inv, uz=dz*inv;
-  let mc=0;
-  // Signed dot, NOT abs: unsafe only when the warp-in vector points TOWARD the
-  // other gate (same direction as gate->other-gate), i.e. you land on the camped
-  // end of the corridor.  Approaching from the far side (negative dot) is safe,
-  // so we clamp negatives to 0 -> full 90 deg clearance.
-  for(const [ox,oy,oz] of otherDirs){ const c=Math.max(0, ux*ox+uy*oy+uz*oz); if(c>mc) mc=c; }
-  return Math.acos(Math.min(1,Math.max(-1,mc)))*RAD2DEG;
+  // gate -> bookmark direction (negate point->gate).  Danger is when this points
+  // toward another gate (aligned with gate->other = large positive dot = small
+  // angle).  Signed, NOT abs: a bookmark on the far side of the gate (dot -> -1,
+  // angle -> 180) is away from the corridor and safe.
+  const inv=1/n, ux=-dx*inv, uy=-dy*inv, uz=-dz*inv;
+  let mc=-1;                          // max dot with any gate->other direction
+  for(const [ox,oy,oz] of otherDirs){ const c=ux*ox+uy*oy+uz*oz; if(c>mc) mc=c; }
+  return Math.acos(Math.min(1,Math.max(-1,mc)))*RAD2DEG;   // small angle = danger
 }
 function minClearance(p, gatePos, dirs){
   if(!gatePos.length) return -1.0;

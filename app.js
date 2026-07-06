@@ -76,19 +76,21 @@ const sub = (a,b) => ({x:a.x-b.x, y:a.y-b.y, z:a.z-b.z});
 const dot = (a,b) => a.x*b.x + a.y*b.y + a.z*b.z;
 const nrm = a => Math.hypot(a.x,a.y,a.z);
 const unit = a => {const n = nrm(a) || 1; return {x:a.x/n, y:a.y/n, z:a.z/n};};
-const lineAngle = (d,u) => {
-  // Signed dot (see solver.js clearanceToGate): unsafe only when the warp-in
-  // vector d points toward the other gate; approaching from the far side is safe.
-  const c = Math.max(0, dot(unit(d), unit(u)));
-  return Math.acos(Math.min(1, Math.max(-1, c)));
+const lineAngle = (gb,go) => {
+  // gb = gate -> bookmark, go = gate -> other-gate.  Danger is when the bookmark
+  // sits toward the other gate (small angle = on the A->B corridor).  Signed,
+  // NOT abs: a bookmark on the FAR side of the gate (angle -> 180) is away from
+  // that corridor and safe, so we must not fold it back to 0.
+  const c = dot(unit(gb), unit(go));
+  return Math.acos(Math.min(1, Math.max(-1, c)));   // 0 = on corridor (danger) .. pi = behind (safe)
 };
 
 function othersOf(k){ return S.gates.filter((_,m) => m !== k); }
 function clearanceLocal(p, g, others){
-  const d = sub(g.pos, p);
+  const gb = sub(p, g.pos);          // gate -> bookmark
   let m = Infinity;
   for (const o of others){
-    const a = lineAngle(d, sub(o.pos, g.pos));
+    const a = lineAngle(gb, sub(o.pos, g.pos));   // vs gate -> other gate
     if (a < m) m = a;
   }
   return m * 180 / Math.PI;
@@ -999,7 +1001,6 @@ function buildDials(){
 // marker is the current bookmark's direction.
 function drawGateSpheres(){
   if(!S || !dials.length) return;
-  const thrCos = Math.cos(THR*Math.PI/180);
   dials.forEach(d => {
     const ctx = d.ctx, D = d.D, R = D/2 - 12, cx = D/2, cy = D/2;
     ctx.clearRect(0,0,D,D);
@@ -1010,11 +1011,15 @@ function drawGateSpheres(){
       return {x:cla*Math.cos(lo), y:Math.sin(la), z:cla*Math.sin(lo)};
     };
     const isSafe = w => {
-      // Directional: w (a candidate warp-in direction) is unsafe only if it
-      // points toward another gate (positive dot with gate->other direction).
-      // Landing on the antipodal (far-side) end is safe.
-      for(const a of d.axes){ if((w.x*a.x+w.y*a.y+w.z*a.z) > thrCos) return false; }
-      return true;
+      // w is a candidate gate -> bookmark direction.  Signed test matching
+      // clearanceLocal: danger when w points toward another gate (small angle to
+      // gate->other); the far side (angle -> 180) is safe.  No abs.
+      let m = Infinity;
+      for(const a of d.axes){
+        const ang = Math.acos(Math.min(1, Math.max(-1, w.x*a.x + w.y*a.y + w.z*a.z)));
+        if(ang < m) m = ang;
+      }
+      return m >= THR*Math.PI/180;
     };
 
     // backing disc (sphere silhouette)
@@ -1053,8 +1058,8 @@ function drawGateSpheres(){
       }
     }
 
-    // gate-to-gate axis tips: only the TOWARD-other-gate direction is the unsafe
-    // center now (directional clearance), so we no longer draw the antipode.
+    // gate-to-gate axis tips: with the signed convention only the TOWARD-other-
+    // gate direction is the unsafe center (the far side is safe), so one dot each.
     for(const a of d.axes){
       const r = rot({x:a.x, y:a.y, z:a.z});
       if(r.z < 0) continue;
@@ -1063,8 +1068,10 @@ function drawGateSpheres(){
     }
 
     // Current bookmark warp-in direction: a spoke from sphere centre out to the
-    // surface point, so it clearly reads as "you come in from THIS direction".
-    const bmDir = unit(sub(BM, d.g.pos));
+    // surface point.  Use the SAME convention as clearanceLocal -- the warp-in
+    // vector is point -> gate (the direction you approach along) -- so the spoke
+    // and the reported number judge the same direction.
+    const bmDir = unit(sub(BM, d.g.pos));   // gate -> bookmark (matches isSafe/clearanceLocal)
     const cl = clearanceLocal(BM, d.g, d.others);
     const col = cl >= THR ? "#2e8b57" : "#c0392b";
     const rb = rot(bmDir);

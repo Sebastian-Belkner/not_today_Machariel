@@ -1,5 +1,7 @@
 # Not Today Machariel!
 
+<img src="ntm_logo.jpeg" alt="Not Today Machariel" width="300">
+
 A browser tool for finding **anti-smartbomb bookmarks** in EVE Online.
 
 Gate camps work because a bookmark on the straight line between two gates makes
@@ -29,3 +31,6 @@ This is a fan-made tool and models gate-to-gate warp-in geometry only. Fly safe.
 
 EVE Online is a registered trademark of CCP hf. This project is not affiliated
 with or endorsed by CCP.
+
+## Overview
+<img src="overview.jpeg" alt="Not Today Machariel" width="900">

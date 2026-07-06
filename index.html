@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Not Today Machariel!</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="brand-text">
+      <div class="eyebrow">EVE Online smartbomb camp helper</div>
+      <h1>Not Today Machariel!</h1>
+      <div class="sub">Find and test anti-smartbomb shared bookmarks in 3D. Pick a region and system, tune the clearance threshold, then drag the black star to explore safer perch positions before a gate camp turns your ship into fireworks.</div>
+    </div>
+    <div class="logo-card" aria-hidden="true">
+      <img src="./ntm_logo.jpeg" alt="Sketch showing a stargate, a Machariel camp, an explosion, and a safe bookmark star">
+    </div>
+  </div>
+  <div class="controls">
+    <label class="ctrl-label">region <select id="regionsel"></select></label>
+    <label class="ctrl-label">system <select id="syssel"></select></label>
+    <input id="mask" type="text" placeholder="filter systems">
+    <span id="secbadge" class="secbadge unknown">sec --</span>
+    <div class="thr">threshold <input id="thr" type="range" min="5" max="45" step="1" value="18"><span id="thrv">18°</span></div>
+    <button id="repick" class="sec">Re-pick</button>
+    <button id="view2d" class="sec">2D view</button>
+    <button id="layflat" class="sec">Lay flat</button>
+    <div class="meta" id="meta">loading systems…</div>
+  </div>
+</header>
+<section class="quick-help">
+  <div><b>Blue cloud:</b> reachable bookmark space inside the system hull.</div>
+  <div><b>Green cloud:</b> positions that clear your current angle threshold.</div>
+  <div><b>Black star:</b> shared bookmark. Drag it in the map; hover objects for details.</div>
+</section>
+<div class="wrap">
+  <div class="card">
+    <div class="readout">min clearance across gates: <span id="kpi" class="kpi">--</span></div>
+    <div id="warn" class="warn" style="display:none"></div>
+    <canvas id="scene" width="600" height="600"></canvas>
+    <div class="legend">
+      <span><span class="sw" style="background:#8fb8de"></span>reachable</span>
+      <span><span class="sw" style="background:#3fa34d"></span>allowed</span>
+      <span><span class="sw" style="background:#e8a317"></span>sun</span>
+      <span><span class="sw" style="background:#7b4fb0"></span>planet</span>
+      <span><span class="sw" style="background:#b39ddb"></span>moon</span>
+      <span><span class="sw" style="background:#d1495b;border-radius:2px"></span>gate</span>
+      <span><span class="sw star-swatch gate-star"></span>gate bookmark</span>
+      <span><span class="sw star-swatch shared-star"></span>shared bookmark</span>
+    </div>
+    <div id="gateclear"></div>
+  </div>
+  <div class="card" style="flex:1;min-width:300px"><div class="recipes" id="recipes"></div></div>
+</div>
+<div class="wrap">
+  <div class="card" style="flex:1 1 100%">
+    <div class="readout" style="margin-bottom:10px">Gate-specific clearance dials</div>
+    <div id="grid" class="grid"></div>
+  </div>
+</div>
+<footer class="footer-note">
+  If you like the tool, consider donating a tiny bit of ISK as a token of your appreciation to <strong>Kahre</strong>.
+  I am happy even about a single ISK — it already shows that someone found it useful.
+</footer>
+<div id="tip"></div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

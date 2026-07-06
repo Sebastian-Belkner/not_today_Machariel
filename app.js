@@ -255,7 +255,7 @@ function star(x,y,R,fill,stroke){
 // it's clearly not one of the star-shaped bookmark markers.
 function sunSymbol(x,y,R,fill){
   const g = ctx.createRadialGradient(x,y,R*0.4,x,y,R*1.9);
-  g.addColorStop(0,"rgba(232,163,23,0.45)");
+  g.addColorStop(0,"rgba(232,163,23,0.75)");
   g.addColorStop(1,"rgba(232,163,23,0)");
   ctx.fillStyle=g;
   ctx.beginPath(); ctx.arc(x,y,R*1.9,0,6.2832); ctx.fill();

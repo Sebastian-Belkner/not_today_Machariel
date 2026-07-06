@@ -551,6 +551,92 @@ function drawAllowSilhouette(poly){
   ctx.restore();
 }
 
+// --- animated warp-step arrows ---------------------------------------------
+// When a recipe is snapped (draggedRecipe), its `legs` describe the warps you
+// perform in-game: each leg is {from,to,bm} in world space.  We draw them as
+// arrows that animate on in sequence, so you can watch the build order.  The
+// arrow runs from `from` to the bookmark landing point `bm` (where you actually
+// stop and bookmark), not all the way to `to`.
+let warpAnim = {active:false, t0:0, recipe:null};
+const WARP_LEG_MS = 650;      // draw time per leg
+const WARP_GAP_MS = 180;      // pause between legs
+
+function startWarpAnim(recipe){
+  if(!recipe || !recipe.legs || !recipe.legs.length){ warpAnim.active = false; return; }
+  warpAnim = {active:true, t0:performance.now(), recipe};
+  requestAnimationFrame(warpTick);
+}
+function warpTick(){
+  if(!warpAnim.active) return;
+  render();
+  const legs = warpAnim.recipe.legs.length;
+  const total = legs*WARP_LEG_MS + (legs-1)*WARP_GAP_MS;
+  if(performance.now() - warpAnim.t0 < total + 400){
+    requestAnimationFrame(warpTick);
+  } else {
+    warpAnim.active = false;
+    render();  // final static frame with fully drawn arrows
+  }
+}
+// Progress in [0,1] for leg i at time now; <=0 not started, >=1 fully drawn.
+function legProgress(i, now){
+  const start = i*(WARP_LEG_MS+WARP_GAP_MS);
+  return Math.max(0, Math.min(1, (now - start)/WARP_LEG_MS));
+}
+
+function drawWarpArrows(recipe){
+  if(!recipe || !recipe.legs || !recipe.legs.length) return;
+  const now = warpAnim.active ? (performance.now() - warpAnim.t0) : Infinity;
+  const legs = recipe.legs;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for(let i=0;i<legs.length;i++){
+    const prog = legProgress(i, now);
+    if(prog <= 0) continue;
+    const L = legs[i];
+    const a = project({x:L.from.x, y:L.from.y, z:L.from.z});
+    const dest = project({x:L.to.x, y:L.to.y, z:L.to.z});   // destination object (planet/gate/BM)
+    const b = project({x:L.bm.x,   y:L.bm.y,   z:L.bm.z});   // bookmark landing point along the line
+    // Animate the full warp line growing from `from` toward the destination.
+    const tipx = a.sx + (dest.sx-a.sx)*prog;
+    const tipy = a.sy + (dest.sy-a.sy)*prog;
+
+    // shaft: full line from source to the destination celestial you warp to
+    ctx.strokeStyle = "rgba(17,17,17,0.85)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(a.sx, a.sy);
+    ctx.lineTo(tipx, tipy);
+    ctx.stroke();
+
+    // arrowhead at the destination once the leg is basically complete
+    if(prog > 0.98){
+      const ang = Math.atan2(dest.sy-a.sy, dest.sx-a.sx);
+      const hl = 11, hw = Math.PI/7;
+      ctx.fillStyle = "rgba(17,17,17,0.9)";
+      ctx.beginPath();
+      ctx.moveTo(dest.sx, dest.sy);
+      ctx.lineTo(dest.sx - hl*Math.cos(ang-hw), dest.sy - hl*Math.sin(ang-hw));
+      ctx.lineTo(dest.sx - hl*Math.cos(ang+hw), dest.sy - hl*Math.sin(ang+hw));
+      ctx.closePath();
+      ctx.fill();
+
+      // numbered badge at the bookmark landing point (sits partway along the line)
+      const bx = b.sx, by = b.sy;
+      ctx.beginPath(); ctx.arc(bx, by, 9, 0, 6.2832);
+      ctx.fillStyle = "#111"; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = "#fff"; ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(i+1), bx, by);
+      ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+    }
+  }
+  ctx.restore();
+}
+
 function render(){
   ctx.clearRect(0,0,CW,CH);
   if(!S || !solution) return;
@@ -594,6 +680,10 @@ function render(){
     ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.setLineDash([5,4]);
     ctx.beginPath(); ctx.moveTo(bmq.sx,bmq.sy); ctx.lineTo(q.sx,q.sy); ctx.stroke(); ctx.setLineDash([]);
   });
+
+  // Animated warp-step arrows for the snapped recipe (drawn over the map but
+  // under the celestial markers/labels below).
+  if(draggedRecipe) drawWarpArrows(draggedRecipe);
 
   const gateLabels = [];
   for(const it of items){
@@ -1026,6 +1116,7 @@ async function fetchDraggedRecipe(){
   if(data.point) BM = {x: data.point.x, y: data.point.y, z: data.point.z};  // snap to buildable landing
   renderRecipes();
   updateReadout();
+  startWarpAnim(data);   // animate the warp-step arrows drawing on in sequence
   render();
 }
 function pickHit(mx,my){const q = project(BM); return Math.hypot(mx-q.sx,my-q.sy) < 16;}

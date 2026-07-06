@@ -82,8 +82,10 @@ function buildPool(S, rng, secondGen=1600){
       const A=N[i], B=N[j];
       let f=0.05;
       while(f<0.96){
-        pool.push({point:lerp3(A.pos,B.pos,f), gen:1,
-          steps:[`Warp ${A.name} → ${B.name}; bookmark ${frac(f,A.name,B.name)}  ➔ BM*`]});
+        const bm=lerp3(A.pos,B.pos,f);
+        pool.push({point:bm, gen:1,
+          steps:[`Warp ${A.name} → ${B.name}; bookmark ${frac(f,A.name,B.name)}  ➔ BM*`],
+          legs:[{from:A.pos, to:B.pos, bm}]});
         f += 1/12;
       }
     }
@@ -101,7 +103,10 @@ function buildPool(S, rng, secondGen=1600){
     pool.push({point:p, gen:2, steps:[
       `Warp ${A.name} → ${B.name}; bookmark ${frac(s,A.name,B.name)}  ➔ BM1`,
       `Warp ${C.name} → ${D.name}; bookmark ${frac(u,C.name,D.name)}  ➔ BM2`,
-      `Warp BM1 → BM2; bookmark ${frac(b,'BM1','BM2')}  ➔ BM*`]});
+      `Warp BM1 → BM2; bookmark ${frac(b,'BM1','BM2')}  ➔ BM*`],
+      legs:[{from:A.pos, to:B.pos, bm:p1},
+            {from:C.pos, to:D.pos, bm:p2},
+            {from:p1,    to:p2,    bm:p}]});
   }
   return pool;
 }
@@ -471,6 +476,7 @@ export function nearestRecipe(G, point, threshold=18){
   const chosen=pool[besti];
   const clr=clearancesAt(G, xyz(chosen.point), threshold);
   return {point:xyz(chosen.point), steps:chosen.steps, gen:chosen.gen||0,
+    legs:(chosen.legs||[]).map(l=>({from:xyz(l.from), to:xyz(l.to), bm:xyz(l.bm)})),
     minClearance:clr.minClearance, evaluable:clr.evaluable, per_gate:clr.per_gate,
     offset:round4(Math.sqrt(bestd))};
 }

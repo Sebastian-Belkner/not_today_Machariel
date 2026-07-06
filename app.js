@@ -251,6 +251,26 @@ function star(x,y,R,fill,stroke){
   ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
   if(stroke){ctx.lineWidth=1.2; ctx.strokeStyle=stroke; ctx.stroke();}
 }
+// The sun gets its own glyph -- a glowing disc with short radiating rays -- so
+// it's clearly not one of the star-shaped bookmark markers.
+function sunSymbol(x,y,R,fill){
+  const g = ctx.createRadialGradient(x,y,R*0.4,x,y,R*1.9);
+  g.addColorStop(0,"rgba(232,163,23,0.45)");
+  g.addColorStop(1,"rgba(232,163,23,0)");
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.arc(x,y,R*1.9,0,6.2832); ctx.fill();
+  ctx.strokeStyle=fill; ctx.lineWidth=1.6; ctx.lineCap="round";
+  for(let i=0;i<8;i++){
+    const a=i*Math.PI/4;
+    ctx.beginPath();
+    ctx.moveTo(x+Math.cos(a)*R*1.25, y+Math.sin(a)*R*1.25);
+    ctx.lineTo(x+Math.cos(a)*R*1.7,  y+Math.sin(a)*R*1.7);
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(x,y,R,0,6.2832);
+  ctx.fillStyle=fill; ctx.fill();
+  ctx.lineWidth=1.2; ctx.strokeStyle="#0f1419"; ctx.stroke();
+}
 function sq(x,y,s,fill){
   ctx.fillStyle=fill; ctx.fillRect(x-s,y-s,2*s,2*s);
   ctx.lineWidth=.8; ctx.strokeStyle="#0f1419"; ctx.strokeRect(x-s,y-s,2*s,2*s);
@@ -603,7 +623,7 @@ function drawWarpArrows(recipe){
     const tipy = a.sy + (dest.sy-a.sy)*prog;
 
     // shaft: full line from source to the destination celestial you warp to
-    ctx.strokeStyle = "rgba(90,100,115,0.75)";
+    ctx.strokeStyle = "rgba(90,100,115,0.45)";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.moveTo(a.sx, a.sy);
@@ -689,10 +709,10 @@ function render(){
   for(const it of items){
     if(it.t === "r") disc(it.x,it.y,1.3,"rgba(143,184,222,0.26)");
     else if(it.t === "a") disc(it.x,it.y,2.0,"rgba(63,163,77,0.50)");
-    else if(it.t === "sun") star(it.x,it.y,12,"#e8a317","#0f1419");
+    else if(it.t === "sun") sunSymbol(it.x,it.y,9,"#e8a317");
     else if(it.t === "moon") disc(it.x,it.y,3,"#b39ddb","#fff",.6);
     else if(it.t === "planet") disc(it.x,it.y,7,"#7b4fb0","#fff",1.4);
-    else if(it.t === "kn") star(it.x,it.y,8,it.col,"#0f1419");
+    else if(it.t === "kn") { ctx.globalAlpha = 0.55; star(it.x,it.y,8,it.col,"#0f1419"); ctx.globalAlpha = 1; }
     else if(it.t === "gate") {sq(it.x,it.y,8,it.g.color); gateLabels.push({x:it.x,y:it.y,text:it.g.name,col:it.g.color});}
     else if(it.t === "bm") star(it.x,it.y,15,"#111","#fff");
   }

@@ -77,7 +77,9 @@ const dot = (a,b) => a.x*b.x + a.y*b.y + a.z*b.z;
 const nrm = a => Math.hypot(a.x,a.y,a.z);
 const unit = a => {const n = nrm(a) || 1; return {x:a.x/n, y:a.y/n, z:a.z/n};};
 const lineAngle = (d,u) => {
-  const c = Math.abs(dot(unit(d), unit(u)));
+  // Signed dot (see solver.js clearanceToGate): unsafe only when the warp-in
+  // vector d points toward the other gate; approaching from the far side is safe.
+  const c = Math.max(0, dot(unit(d), unit(u)));
   return Math.acos(Math.min(1, Math.max(-1, c)));
 };
 
@@ -960,7 +962,33 @@ function buildDials(){
     // surrounding cones are UNSAFE.  A warp-in direction is safe when its angle
     // to all of these exceeds the threshold.
     const axes = others.map(o => unit(sub(o.pos, g.pos)));
-    dials.push({gateIndex:k, g, others, axes, cv, ctx:cv.getContext("2d"), D, title});
+    const dial = {gateIndex:k, g, others, axes, cv, ctx:cv.getContext("2d"), D, title};
+    // Dragging a dial rotates the SHARED camera, exactly like dragging the main
+    // map — so the map and every dial turn together.
+    let dragging = false, plast = null;
+    cv.style.cursor = "grab";
+    cv.addEventListener("pointerdown", e => {
+      if(view2d) return;
+      dragging = true; plast = {x:e.clientX, y:e.clientY};
+      cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing";
+      e.preventDefault();
+    });
+    cv.addEventListener("pointermove", e => {
+      if(!dragging) return;
+      const dx = e.clientX - plast.x, dy = e.clientY - plast.y;
+      plast = {x:e.clientX, y:e.clientY};
+      const kx = dx*0.01, ky = dy*0.01;
+      let R = camRot;
+      if(kx) R = matMul(axisAngle(0,1,0, kx), R);
+      if(ky) R = matMul(axisAngle(1,0,0, ky), R);
+      camRot = orthonormalize(R);
+      tick();                       // redraw map + dials together
+    });
+    const endDrag = e => { dragging = false; cv.style.cursor = "grab";
+      try{ cv.releasePointerCapture(e.pointerId); }catch(_){} };
+    cv.addEventListener("pointerup", endDrag);
+    cv.addEventListener("pointercancel", endDrag);
+    dials.push(dial);
   });
   drawGateSpheres();
 }
@@ -982,7 +1010,10 @@ function drawGateSpheres(){
       return {x:cla*Math.cos(lo), y:Math.sin(la), z:cla*Math.sin(lo)};
     };
     const isSafe = w => {
-      for(const a of d.axes){ if(Math.abs(w.x*a.x+w.y*a.y+w.z*a.z) > thrCos) return false; }
+      // Directional: w (a candidate warp-in direction) is unsafe only if it
+      // points toward another gate (positive dot with gate->other direction).
+      // Landing on the antipodal (far-side) end is safe.
+      for(const a of d.axes){ if((w.x*a.x+w.y*a.y+w.z*a.z) > thrCos) return false; }
       return true;
     };
 
@@ -1022,14 +1053,13 @@ function drawGateSpheres(){
       }
     }
 
-    // gate-to-gate axis tips (unsafe centers)
+    // gate-to-gate axis tips: only the TOWARD-other-gate direction is the unsafe
+    // center now (directional clearance), so we no longer draw the antipode.
     for(const a of d.axes){
-      for(const s of [1,-1]){
-        const r = rot({x:a.x*s, y:a.y*s, z:a.z*s});
-        if(r.z < 0) continue;
-        ctx.beginPath(); ctx.arc(cx + r.x*R, cy - r.y*R, 2.6, 0, 6.2832);
-        ctx.fillStyle = "rgba(209,73,91,0.9)"; ctx.fill();
-      }
+      const r = rot({x:a.x, y:a.y, z:a.z});
+      if(r.z < 0) continue;
+      ctx.beginPath(); ctx.arc(cx + r.x*R, cy - r.y*R, 2.6, 0, 6.2832);
+      ctx.fillStyle = "rgba(209,73,91,0.9)"; ctx.fill();
     }
 
     // Current bookmark warp-in direction: a spoke from sphere centre out to the

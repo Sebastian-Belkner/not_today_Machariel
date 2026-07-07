@@ -403,7 +403,7 @@ export function buildGeometry(sys, systemId){
 }
 
 // ---- public: full solution for a threshold + seed (replaces /api/solution)-
-export function getSolution(G, threshold=18, seed=0){
+export function getSolution(G, threshold=18, seed=0, pergateMode='near'){
   const S=G.S;
   const gateCount=S.gates.length;
   const evaluable=gateCount>=2;
@@ -416,16 +416,44 @@ export function getSolution(G, threshold=18, seed=0){
     const vals=G.candidateClearances.map(row=>row[k]);
     let besti=0; for(let i=1;i<vals.length;i++) if(vals[i]>vals[besti]) besti=i;
     const valid = evaluable ? vals.map((cl,i)=>cl>=threshold?i:-1).filter(i=>i>=0) : [];
-    const chosenI = valid.length ? rng.choice(valid) : besti;
+    // Per-gate bookmark placement:
+    //  'near' -> random among the candidates CLOSEST to the gate (convenient perch)
+    //  'any'  -> random among ALL candidates that clear the threshold
+    let chosenI;
+    if(valid.length){
+      if(pergateMode === 'any'){
+        chosenI = valid[rng.randint(valid.length)];
+      } else {
+        const gp=G.gatePos[k];
+        const scored = valid.map(i=>{
+          const p=G.pool[i].point;
+          const dx=p[0]-gp[0], dy=p[1]-gp[1], dz=p[2]-gp[2];
+          return {i, d:dx*dx+dy*dy+dz*dz};
+        }).sort((a,b)=>a.d-b.d);
+        const near = scored.slice(0, Math.min(6, scored.length));
+        chosenI = near[rng.randint(near.length)].i;
+      }
+    } else {
+      chosenI=besti;
+    }
     const chosen=G.pool[chosenI];
+    const gpk=G.gatePos[k];
+    const cp=chosen.point;
+    const gateDist=Math.sqrt((cp[0]-gpk[0])**2+(cp[1]-gpk[1])**2+(cp[2]-gpk[2])**2);
     perGate.push({gateIndex:k, name:S.gates[k].name, color:S.gates[k].color,
       point:xyz(chosen.point), bestClearance: evaluable?round2(vals[besti]):null,
-      nvalid:valid.length, steps:chosen.steps});
+      nvalid:valid.length, steps:chosen.steps, gateDist:round2(gateDist)});
   }
 
   let single;
   if(candCount){
-    const si=G.singleBest;
+    // The single all-gates bookmark: pick RANDOMLY among candidates that clear
+    // the threshold (seeded, so Re-pick with a new seed gives a fresh one).  If
+    // none clear, fall back to the best-available min-clearance candidate.
+    const validSingle = evaluable
+      ? G.candidateMin.map((cl,i)=>cl>=threshold?i:-1).filter(i=>i>=0)
+      : [];
+    const si = validSingle.length ? rng.choice(validSingle) : G.singleBest;
     single={point:xyz(G.pool[si].point), minClearance:evaluable?round2(G.candidateMin[si]):null, steps:G.pool[si].steps};
   } else {
     single={point:{x:0,y:0,z:0}, minClearance:null, steps:[]};

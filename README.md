@@ -15,9 +15,9 @@ It's free and runs entirely in your browser — no account, no download, no serv
 
 ## What it is (and isn't)
 
-It's pure geometry: a planning aid, not a guarantee. It can't see cloaks, bubbles,
-or your d-scan, and single-gate systems are flagged as "not evaluated" rather than
-pretended safe. Use it to plan smarter bookmarks — your own judgement still matters.
+It's pure geometry: a planning aid, not a guarantee. 
+Use it to plan smarter bookmarks — your own judgement still matters.
+The probe trick is a good alternative if you want to set a location on-grid and brought probes with you.
 
 ## Support
 

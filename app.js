@@ -1,13 +1,15 @@
 import * as NTMSolver from "./solver.js";
 window.NTMSolver = NTMSolver;
 
-const CW = 600, CH = 600;
+const CW = 760, CH = 760;
 const cvs = document.getElementById("scene"), ctx = cvs.getContext("2d");
 const tip = document.getElementById("tip");
 const NS = "http://www.w3.org/2000/svg";
 
 let SYSTEMS = [], REGIONS = [], currentRegion = "", systemId = null, S = null, solution = null, BM = {x:0,y:0,z:0};
-let THR = 18, seed = 0, zoom = 1, camScale = 1, camCtr = {x:0,y:0,z:0};
+let THR = 18, seed = Math.floor(Math.random()*1e9), zoom = 1, camScale = 1, camCtr = {x:0,y:0,z:0};
+// Fresh seed so the auto-picked bookmark differs per load and per user.
+function randomSeed(){ return Math.floor(Math.random()*1e9); }
 // Camera orientation as a 3x3 rotation matrix (row-major), applied to
 // world->view.  Using an accumulated matrix instead of yaw/pitch Euler angles
 // removes gimbal lock: horizontal drags always spin around the current screen-
@@ -15,7 +17,7 @@ let THR = 18, seed = 0, zoom = 1, camScale = 1, camCtr = {x:0,y:0,z:0};
 // so every orientation is reachable smoothly (important for laying planar
 // systems flat).  Initialised to a pleasant tilted-overhead view below.
 let camRot = [[1,0,0],[0,1,0],[0,0,1]];
-let view2d = false, mode = null, last = null, dials = [];
+let mode = null, last = null, dials = [];
 let solutionRequestSeq = 0, thresholdTimer = null;
 let draggedRecipe = null, recipeRequestSeq = 0;
 
@@ -183,7 +185,6 @@ function yawPitchMatrix(yaw, pitch){
   return matMul(Rpitch, Ryaw);
 }
 function defaultView(){ camRot = yawPitchMatrix(0.6, -1.05); }
-function topDownView(){ camRot = [[1,0,0],[0,1,0],[0,0,1]]; }
 
 // Principal axes of the current system's body cloud (about camCtr), ascending
 // by spread.  The first axis is the thinnest direction -- for a planar system
@@ -690,7 +691,9 @@ function render(){
   S.moons.forEach(m => {const q=project(m.pos); items.push({d:q.depth,t:"moon",x:q.sx,y:q.sy});});
   S.planets.forEach(p => {const q=project(p.pos); items.push({d:q.depth,t:"planet",x:q.sx,y:q.sy});});
   S.gates.forEach(g => {const q=project(g.pos); items.push({d:q.depth,t:"gate",x:q.sx,y:q.sy,g});});
-  solution.per_gate.forEach(pg => {const q=project(pg.point); items.push({d:q.depth,t:"kn",x:q.sx,y:q.sy,col:pg.color});});
+  if(document.getElementById("showpergate")?.checked){
+    solution.per_gate.forEach(pg => {const q=project(pg.point); items.push({d:q.depth,t:"kn",x:q.sx,y:q.sy,col:pg.color});});
+  }
   items.push({d:bmq.depth,t:"bm",x:bmq.sx,y:bmq.sy});
   items.sort((a,b) => a.d-b.d);
 
@@ -901,24 +904,27 @@ function fmtClr(v){
   // Clearance may be null (undefined metric, e.g. single-gate systems).
   return (v === null || v === undefined || !isFinite(v)) ? "n/a" : `${v.toFixed(0)}°`;
 }
+function fmtDist(au){
+  // gateDist comes in the same units as the coordinate data, which is AU.
+  if(au === null || au === undefined || !isFinite(au)) return "n/a";
+  const KM_PER_AU = 1.496e8;   // 1 AU ≈ 149.6 million km
+  if(au >= 0.01) return `${au.toFixed(2)} AU`;
+  return `${Math.round(au*KM_PER_AU).toLocaleString()} km`;
+}
 
 function renderRecipes(){
   const el = document.getElementById("recipes");
-  let h = "<h3>How to build these bookmarks</h3>";
-  h += '<div style="color:#52606d;margin-bottom:6px">k = N — one bookmark per gate:</div>';
-  for(const pg of solution.per_gate){
-    const tag = pg.nvalid ? "" : ' <span style="color:#c0392b">(no option clears threshold — best available)</span>';
-    h += `<div class="g"><span class="gt" style="color:${pg.color}">${escapeHtml(pg.name)}</span> — ${fmtClr(pg.bestClearance)}${tag}<ol>`;
-    for(const s of pg.steps) h += `<li>${escapeHtml(s)}</li>`;
-    h += "</ol></div>";
-  }
+  const showPerGate = document.getElementById("showpergate")?.checked;
+  let h = "<h3>How to build your bookmark</h3>";
+
+  // --- the headline feature: the single all-gates bookmark, shown FIRST ---
   if(draggedRecipe){
     const dok = draggedRecipe.minClearance !== null && draggedRecipe.minClearance >= THR;
     const genLabel = draggedRecipe.gen === 2 ? "two-warp" : (draggedRecipe.gen === 1 ? "single-warp" : "recipe");
     const clrNote = draggedRecipe.evaluable === false
       ? "(clearance not evaluated for this system)"
-      : (dok ? "(serves all gates)" : '<span style="color:#c0392b">(does not clear threshold for all gates)</span>');
-    h += `<div class="k1"><div class="gt">k = 1 — nearest buildable bookmark to your dragged position — ${genLabel}, min ${fmtClr(draggedRecipe.minClearance)} ` +
+      : (dok ? "(one bookmark, clears every gate)" : '<span style="color:#c0392b">(does not clear threshold for all gates)</span>');
+    h += `<div class="k1"><div class="gt">Single bookmark for all gates — min ${fmtClr(draggedRecipe.minClearance)} ` +
          clrNote + "</div><ol>";
     for(const s of draggedRecipe.steps) h += `<li>${escapeHtml(s)}</li>`;
     h += "</ol></div>";
@@ -927,11 +933,23 @@ function renderRecipes(){
     const ok = sc !== null && sc >= THR;
     const clrNote = solution.evaluable === false
       ? "(clearance not evaluated for this system)"
-      : (ok ? "(serves all gates)" : '<span style="color:#c0392b">(does not clear threshold for all gates — best available)</span>');
-    h += `<div class="k1"><div class="gt">k = 1 — single shared bookmark — min ${fmtClr(sc)} ` +
+      : (ok ? "(one bookmark, clears every gate)" : '<span style="color:#c0392b">(does not clear threshold for all gates — best available)</span>');
+    h += `<div class="k1"><div class="gt">Single bookmark for all gates — min ${fmtClr(sc)} ` +
          clrNote + "</div><ol>";
     for(const s of solution.single.steps) h += `<li>${escapeHtml(s)}</li>`;
     h += "</ol></div>";
+  }
+
+  // --- optional per-gate bookmarks, only when the checkbox is ticked ---
+  if(showPerGate){
+    h += '<div style="color:#52606d;margin:12px 0 6px">Per-gate bookmarks (one perch per gate, sits close to its gate):</div>';
+    for(const pg of solution.per_gate){
+      const tag = pg.nvalid ? "" : ' <span style="color:#c0392b">(no option clears threshold — best available)</span>';
+      const dist = pg.gateDist !== undefined ? ` · ${fmtDist(pg.gateDist)} from gate` : "";
+      h += `<div class="g"><span class="gt" style="color:${pg.color}">${escapeHtml(pg.name)}</span> — ${fmtClr(pg.bestClearance)}${dist}${tag}<ol>`;
+      for(const s of pg.steps) h += `<li>${escapeHtml(s)}</li>`;
+      h += "</ol></div>";
+    }
   }
   el.innerHTML = h;
 }
@@ -970,7 +988,6 @@ function buildDials(){
     let dragging = false, plast = null;
     cv.style.cursor = "grab";
     cv.addEventListener("pointerdown", e => {
-      if(view2d) return;
       dragging = true; plast = {x:e.clientX, y:e.clientY};
       cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing";
       e.preventDefault();
@@ -1170,7 +1187,7 @@ async function loadSolution(){
     const G = await geometryFor(systemId);
     if(mySeq !== solutionRequestSeq) return;
     const t0 = performance.now();
-    data = window.NTMSolver.getSolution(G, THR, seed);
+    data = window.NTMSolver.getSolution(G, THR, seed, document.getElementById("pergatemode")?.value || 'near');
     data.solution.meta.timingMs = Math.round(performance.now() - t0);
   } catch(err){
     document.getElementById("meta").textContent = String(err.message || err);
@@ -1182,7 +1199,7 @@ async function loadSolution(){
   BM = {...solution.single.point};
   draggedRecipe = null;
   computeCam();
-  if(view2d){ topDownView(); } else { defaultView(); }
+  defaultView();
   buildDials();
   renderRecipes();
   updateReadout();
@@ -1256,8 +1273,10 @@ function hoverHit(mx,my){
   const clr1 = v => (v === null || v === undefined || !isFinite(v)) ? "n/a" : `${v.toFixed(1)}°`;
   addHover(cands, "Shared bookmark", "draggable star", BM, "#111", 18,
     `Drag me. Min clearance ${evaluable ? clr1(info.minClearance) : "n/a (single-gate system)"}. Distance from sun ${distanceFromSun(BM).toFixed(2)} AU.`, 6);
-  solution.per_gate.forEach(pg => addHover(cands, `${pg.name} bookmark`, "gate-specific bookmark", pg.point, pg.color, 13,
-    `Recipe bookmark for ${pg.name}. Best clearance ${clr1(pg.bestClearance)}. Distance from sun ${distanceFromSun(pg.point).toFixed(2)} AU.`, 5));
+  if(document.getElementById("showpergate")?.checked){
+    solution.per_gate.forEach(pg => addHover(cands, `${pg.name} bookmark`, "gate-specific bookmark", pg.point, pg.color, 13,
+      `Recipe bookmark for ${pg.name}. Best clearance ${clr1(pg.bestClearance)}. Distance from sun ${distanceFromSun(pg.point).toFixed(2)} AU.`, 5));
+  }
   addHover(cands, "Sun", "star / system centre", S.sun, "#e8a317", 14, "System centre.", 1);
   S.planets.forEach((pl,i) => addHover(cands, pl.name || `Planet ${i+1}`, "planet", pl.pos, "#7b4fb0", 11,
     `Distance from sun ${distanceFromSun(pl.pos).toFixed(2)} AU.`, 2));
@@ -1305,7 +1324,6 @@ cvs.addEventListener("pointermove", e => {
   const dx = e.clientX-last.x, dy = e.clientY-last.y;
   last = {x:e.clientX,y:e.clientY};
   if(mode === "orbit"){
-    if(view2d) return;
     // Turntable feel, gimbal-lock-free: horizontal drag spins about the current
     // screen-vertical axis, vertical drag tilts about the current screen-
     // horizontal axis.  Both are applied in VIEW space (post-multiply on the
@@ -1338,14 +1356,14 @@ cvs.addEventListener("wheel", e => {e.preventDefault(); zoom*=Math.exp(-e.deltaY
 
 document.getElementById("regionsel").addEventListener("change", async e => {
   currentRegion = e.target.value;
-  seed = 0;
+  seed = randomSeed();
   document.getElementById("mask").value = "";
   await fetchSystems("", currentRegion === "The Forge" ? "Jita" : null, currentRegion);
 });
 document.getElementById("mask").addEventListener("input", e => fetchSystems(e.target.value, null, currentRegion));
 document.getElementById("syssel").addEventListener("change", async e => {
   systemId=+e.target.value;
-  seed=0;
+  seed=randomSeed();
   const chosen = SYSTEMS.find(s => s.id === systemId);
   setSecurityBadge(chosen ? chosen.security : null);
   await loadSolution();
@@ -1362,15 +1380,14 @@ document.getElementById("thr").addEventListener("change", async e => {
   clearTimeout(thresholdTimer);
   await loadSolution();
 });
-document.getElementById("repick").addEventListener("click", async () => {seed += 1; await loadSolution();});
-document.getElementById("view2d").addEventListener("click", () => {
-  view2d = !view2d;
-  document.getElementById("view2d").textContent = view2d ? "3D view" : "2D view";
-  if(view2d){ topDownView(); } else { defaultView(); }
-  tick();
+document.getElementById("repick").addEventListener("click", async () => {seed = randomSeed(); await loadSolution();});
+document.getElementById("showpergate").addEventListener("change", (e) => {
+  document.getElementById("pergatemodewrap").style.display = e.target.checked ? "" : "none";
+  const lg = document.getElementById("legend-gatebm"); if(lg) lg.style.display = e.target.checked ? "" : "none";
+  if(solution){ renderRecipes(); render(); }
 });
+document.getElementById("pergatemode").addEventListener("change", async () => { await loadSolution(); });
 document.getElementById("layflat").addEventListener("click", () => {
-  if(view2d){ view2d = false; document.getElementById("view2d").textContent = "2D view"; }
   layFlat();
 });
 

@@ -17,7 +17,7 @@ function randomSeed(){ return Math.floor(Math.random()*1e9); }
 // so every orientation is reachable smoothly (important for laying planar
 // systems flat).  Initialised to a pleasant tilted-overhead view below.
 let camRot = [[1,0,0],[0,1,0],[0,0,1]];
-let mode = null, last = null, dials = [];
+let mode = null, last = null, dials = [], _detailGate = -1;
 let solutionRequestSeq = 0, thresholdTimer = null;
 let draggedRecipe = null, recipeRequestSeq = 0;
 
@@ -245,6 +245,20 @@ function layFlat(){
 function disc(x,y,r,fill,stroke,sw){
   ctx.beginPath(); ctx.arc(x,y,r,0,6.2832); ctx.fillStyle=fill; ctx.fill();
   if(stroke){ctx.lineWidth=sw||1; ctx.strokeStyle=stroke; ctx.stroke();}
+}
+// Asteroid belt: a small hollow amber ring (evokes a belt), understated so it
+// doesn't compete with planets/gates.
+function beltGlyph(x,y){
+  ctx.beginPath(); ctx.arc(x,y,3.2,0,6.2832);
+  ctx.lineWidth=1.4; ctx.strokeStyle="#b5892f"; ctx.stroke();
+}
+// NPC station: a small teal diamond.
+function stationGlyph(x,y){
+  const s=3.4;
+  ctx.beginPath();
+  ctx.moveTo(x,y-s); ctx.lineTo(x+s,y); ctx.lineTo(x,y+s); ctx.lineTo(x-s,y); ctx.closePath();
+  ctx.fillStyle="#2a9d8f"; ctx.fill();
+  ctx.lineWidth=.8; ctx.strokeStyle="#0f2e2a"; ctx.stroke();
 }
 function star(x,y,R,fill,stroke){
   ctx.beginPath();
@@ -689,6 +703,8 @@ function render(){
   const bmq = project(BM), sunq = project(S.sun);
   items.push({d:sunq.depth,t:"sun",x:sunq.sx,y:sunq.sy});
   S.moons.forEach(m => {const q=project(m.pos); items.push({d:q.depth,t:"moon",x:q.sx,y:q.sy});});
+  (S.belts||[]).forEach(b => {const q=project(b.pos); items.push({d:q.depth,t:"belt",x:q.sx,y:q.sy});});
+  (S.stations||[]).forEach(s => {const q=project(s.pos); items.push({d:q.depth,t:"station",x:q.sx,y:q.sy});});
   S.planets.forEach(p => {const q=project(p.pos); items.push({d:q.depth,t:"planet",x:q.sx,y:q.sy});});
   S.gates.forEach(g => {const q=project(g.pos); items.push({d:q.depth,t:"gate",x:q.sx,y:q.sy,g});});
   if(document.getElementById("showpergate")?.checked){
@@ -718,6 +734,8 @@ function render(){
     else if(it.t === "a") disc(it.x,it.y,2.0,"rgba(63,163,77,0.50)");
     else if(it.t === "sun") sunSymbol(it.x,it.y,9,"#e8a317");
     else if(it.t === "moon") disc(it.x,it.y,3,"#b39ddb","#fff",.6);
+    else if(it.t === "belt") beltGlyph(it.x,it.y);
+    else if(it.t === "station") stationGlyph(it.x,it.y);
     else if(it.t === "planet") disc(it.x,it.y,7,"#7b4fb0","#fff",1.4);
     else if(it.t === "kn") { ctx.globalAlpha = 0.55; star(it.x,it.y,8,it.col,"#0f1419"); ctx.globalAlpha = 1; }
     else if(it.t === "gate") {sq(it.x,it.y,8,it.g.color); gateLabels.push({x:it.x,y:it.y,text:it.g.name,col:it.g.color});}
@@ -912,46 +930,70 @@ function fmtDist(au){
   return `${Math.round(au*KM_PER_AU).toLocaleString()} km`;
 }
 
+function renderHero(){
+  const stepsEl = document.getElementById("herosteps");
+  const statusEl = document.getElementById("herostatus");
+  if(!stepsEl || !statusEl || !solution) return;
+  const titleEl = document.getElementById("herotitle");
+  const sysName = (S && S.name) ? S.name : "this system";
+  const rec = draggedRecipe || solution.single;
+  const mc = draggedRecipe ? draggedRecipe.minClearance : solution.single.minClearance;
+  const evaluable = solution.evaluable !== false;
+  const gates = solution.meta ? solution.meta.gates : (solution.per_gate ? solution.per_gate.length : 0);
+
+  stepsEl.innerHTML = "";
+  for(const s of (rec.steps || [])){
+    const li = document.createElement("li");
+    li.textContent = s;
+    stepsEl.appendChild(li);
+  }
+  if(!evaluable){
+    if(titleEl) titleEl.textContent = `Your personal, random bookmark for ${sysName}`;
+    statusEl.textContent = "single-gate system — not evaluated";
+    statusEl.className = "hero-status bad";
+  } else if(mc !== null && mc >= THR){
+    if(titleEl) titleEl.textContent =
+      `Your personal, random bookmark for ${sysName}, clearing all ${gates} gates with at least ${Math.round(mc)}° warp-in alignment`;
+    statusEl.textContent = "one bookmark for the whole system";
+    statusEl.className = "hero-status";
+  } else {
+    if(titleEl) titleEl.textContent =
+      `Your personal, random bookmark for ${sysName} — best available: ${mc === null ? "n/a" : Math.round(mc)+"°"} warp-in alignment`;
+    statusEl.textContent = `below your ${THR}° threshold`;
+    statusEl.className = "hero-status bad";
+  }
+}
+
 function renderRecipes(){
+  renderHero();
   const el = document.getElementById("recipes");
   const showPerGate = document.getElementById("showpergate")?.checked;
-  let h = "<h3>How to build your bookmark</h3>";
 
-  // --- the headline feature: the single all-gates bookmark, shown FIRST ---
-  if(draggedRecipe){
-    const dok = draggedRecipe.minClearance !== null && draggedRecipe.minClearance >= THR;
-    const genLabel = draggedRecipe.gen === 2 ? "two-warp" : (draggedRecipe.gen === 1 ? "single-warp" : "recipe");
-    const clrNote = draggedRecipe.evaluable === false
-      ? "(clearance not evaluated for this system)"
-      : (dok ? "(one bookmark, clears every gate)" : '<span style="color:#c0392b">(does not clear threshold for all gates)</span>');
-    h += `<div class="k1"><div class="gt">Single bookmark for all gates — min ${fmtClr(draggedRecipe.minClearance)} ` +
-         clrNote + "</div><ol>";
-    for(const s of draggedRecipe.steps) h += `<li>${escapeHtml(s)}</li>`;
-    h += "</ol></div>";
-  } else {
-    const sc = solution.single.minClearance;
-    const ok = sc !== null && sc >= THR;
-    const clrNote = solution.evaluable === false
-      ? "(clearance not evaluated for this system)"
-      : (ok ? "(one bookmark, clears every gate)" : '<span style="color:#c0392b">(does not clear threshold for all gates — best available)</span>');
-    h += `<div class="k1"><div class="gt">Single bookmark for all gates — min ${fmtClr(sc)} ` +
-         clrNote + "</div><ol>";
-    for(const s of solution.single.steps) h += `<li>${escapeHtml(s)}</li>`;
-    h += "</ol></div>";
+  if(!showPerGate){
+    el.innerHTML = '<h3>Per-gate bookmarks</h3>' +
+      '<div style="color:#52606d;font-size:14px;line-height:1.5">Your one system-wide bookmark is shown above. ' +
+      'If a single bookmark can\'t clear every gate well enough, tick <b>“show per-gate BMs”</b> for an individual perch at each gate.</div>';
+    return;
   }
 
-  // --- optional per-gate bookmarks, only when the checkbox is ticked ---
-  if(showPerGate){
-    h += '<div style="color:#52606d;margin:12px 0 6px">Per-gate bookmarks (one perch per gate, sits close to its gate):</div>';
-    for(const pg of solution.per_gate){
-      const tag = pg.nvalid ? "" : ' <span style="color:#c0392b">(no option clears threshold — best available)</span>';
-      const dist = pg.gateDist !== undefined ? ` · ${fmtDist(pg.gateDist)} from gate` : "";
-      h += `<div class="g"><span class="gt" style="color:${pg.color}">${escapeHtml(pg.name)}</span> — ${fmtClr(pg.bestClearance)}${dist}${tag}<ol>`;
-      for(const s of pg.steps) h += `<li>${escapeHtml(s)}</li>`;
-      h += "</ol></div>";
-    }
+  let h = '<h3>Per-gate bookmarks</h3>';
+  h += '<div style="color:#52606d;margin:0 0 6px;font-size:13px">One perch per gate. Click a gate star on the map.</div>';
+  for(const pg of solution.per_gate){
+    const tag = pg.nvalid ? "" : ' <span style="color:#c0392b">(no option clears threshold — best available)</span>';
+    const dist = pg.gateDist !== undefined ? ` · ${fmtDist(pg.gateDist)} from gate` : "";
+    h += `<div class="g" data-gate="${pg.gateIndex}"><span class="gt" style="color:${pg.color}">${escapeHtml(pg.name)}</span> — ${fmtClr(pg.bestClearance)}${dist}${tag}<ol>`;
+    for(const s of pg.steps) h += `<li>${escapeHtml(s)}</li>`;
+    h += "</ol></div>";
   }
   el.innerHTML = h;
+  highlightGateRecipe(_detailGate);   // keep highlight in sync after a re-render
+}
+
+// Highlight the per-gate recipe block matching the selected gate (clicked star).
+function highlightGateRecipe(gi){
+  document.querySelectorAll('#recipes .g').forEach(el=>{
+    el.classList.toggle('g-selected', +el.dataset.gate === gi);
+  });
 }
 
 function eln(t,a){
@@ -1256,6 +1298,17 @@ async function fetchDraggedRecipe(){
   render();
 }
 function pickHit(mx,my){const q = project(BM); return Math.hypot(mx-q.sx,my-q.sy) < 16;}
+// Which per-gate bookmark star (if any) is under the cursor; -1 if none.
+function gateStarHit(mx,my){
+  if(!solution || !solution.per_gate) return -1;
+  let best=-1, bd=14;
+  solution.per_gate.forEach((pg,i)=>{
+    const q=project(pg.point);
+    const d=Math.hypot(mx-q.sx,my-q.sy);
+    if(d<bd){ bd=d; best=i; }
+  });
+  return best;
+}
 function canvasMouse(e){
   const r = cvs.getBoundingClientRect();
   return {mx:(e.clientX-r.left)*(CW/r.width), my:(e.clientY-r.top)*(CH/r.height)};
@@ -1282,6 +1335,10 @@ function hoverHit(mx,my){
     `Distance from sun ${distanceFromSun(pl.pos).toFixed(2)} AU.`, 2));
   S.moons.forEach((m,i) => addHover(cands, m.name || `Moon ${i+1}`, "moon", m.pos, "#b39ddb", 8,
     `Distance from sun ${distanceFromSun(m.pos).toFixed(2)} AU.`, 2));
+  (S.belts||[]).forEach((b,i) => addHover(cands, b.name || `Belt ${i+1}`, "asteroid belt", b.pos, "#b5892f", 8,
+    `Permanent warpable anchor. Distance from sun ${distanceFromSun(b.pos).toFixed(2)} AU.`, 2));
+  (S.stations||[]).forEach((s,i) => addHover(cands, s.name || `Station ${i+1}`, "NPC station", s.pos, "#2a9d8f", 9,
+    `Permanent warpable anchor. Distance from sun ${distanceFromSun(s.pos).toFixed(2)} AU.`, 2));
   S.gates.forEach((g,k) => {
     const pg = info.per_gate.find(x => x.gateIndex === k);
     const clrTxt = evaluable && pg && isFinite(pg.clearance) ? `${pg.clearance.toFixed(1)}°` : "not evaluated";
@@ -1305,10 +1362,12 @@ function showTip(hit, clientX, clientY){
   tip.style.display = "block";
 }
 
+let _downXY = null;
 cvs.addEventListener("pointerdown", e => {
   if(!S || !solution) return;
   const {mx,my} = canvasMouse(e);
   hideTip();
+  _downXY = {x:e.clientX, y:e.clientY};
   mode = pickHit(mx,my) ? "bm" : "orbit";
   last = {x:e.clientX,y:e.clientY};
   cvs.setPointerCapture(e.pointerId);
@@ -1342,10 +1401,20 @@ cvs.addEventListener("pointermove", e => {
   }
   tick();
 });
-cvs.addEventListener("pointerup", () => {
+cvs.addEventListener("pointerup", (e) => {
   const wasDragging = mode === "bm";
   mode = null;
-  if(wasDragging) fetchDraggedRecipe();
+  if(wasDragging){ fetchDraggedRecipe(); _downXY = null; return; }
+  // Detect a click (negligible movement) on a per-gate star -> open close-up.
+  if(_downXY){
+    const moved = Math.hypot(e.clientX-_downXY.x, e.clientY-_downXY.y);
+    _downXY = null;
+    if(moved < 5 && document.getElementById("showpergate")?.checked){
+      const {mx,my} = canvasMouse(e);
+      const gi = gateStarHit(mx,my);
+      if(gi !== -1){ selectGate(gi); return; }
+    }
+  }
 });
 cvs.addEventListener("pointerleave", () => {
   const wasDragging = mode === "bm";
@@ -1381,15 +1450,34 @@ document.getElementById("thr").addEventListener("change", async e => {
   await loadSolution();
 });
 document.getElementById("repick").addEventListener("click", async () => {seed = randomSeed(); await loadSolution();});
+document.getElementById("heroRepick").addEventListener("click", async () => {seed = randomSeed(); await loadSolution();});
 document.getElementById("showpergate").addEventListener("change", (e) => {
   document.getElementById("pergatemodewrap").style.display = e.target.checked ? "" : "none";
   const lg = document.getElementById("legend-gatebm"); if(lg) lg.style.display = e.target.checked ? "" : "none";
+  if(!e.target.checked){
+    // per-gate stars are gone, so clear any recipe highlight
+    _detailGate = -1;
+    highlightGateRecipe(-1);
+  }
   if(solution){ renderRecipes(); render(); }
 });
 document.getElementById("pergatemode").addEventListener("change", async () => { await loadSolution(); });
 document.getElementById("layflat").addEventListener("click", () => {
   layFlat();
 });
+
+// Clicking a per-gate star just highlights its recipe in the list.
+function selectGate(gi){
+  _detailGate = gi;
+  highlightGateRecipe(gi);
+}
+
+// small star drawer (kept: used elsewhere if needed)
+function starOn(c,x,y,R,fill,stroke){
+  c.beginPath();
+  for(let i=0;i<10;i++){const a=Math.PI/2+i*Math.PI/5,rr=i%2?R*.42:R;const px=x+rr*Math.cos(a),py=y-rr*Math.sin(a);i?c.lineTo(px,py):c.moveTo(px,py);}
+  c.closePath(); c.fillStyle=fill; c.fill(); if(stroke){c.lineWidth=1.2;c.strokeStyle=stroke;c.stroke();}
+}
 
 async function init(){
   await fetchRegions("The Forge");

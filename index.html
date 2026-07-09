@@ -34,7 +34,7 @@
     <div class="brand-text">
       <div class="eyebrow"><span class="game">EVE Online</span> · anti-smartbomb bookmark generator</div>
       <h1>Not Today Machariel!</h1>
-      <div class="sub">An out-of-game tool that generates safespot bookmarks whose warp-in angle sits off the predictable gate-to-gate lines. Pick a system, set a clearance angle, and get the exact in-game warp steps to build the bookmark. The probe-formation trick works too — this is just a single-bookmark-per-system alternative you can prep before you undock.</div>
+      <div class="sub">A tool that generates safespot bookmarks whose warp-in angle sits off the predictable gate-to-gate lines. Pick a system, set a clearance angle, and get the exact in-game warp steps to build the bookmark. This is a single-bookmark-per-system alternative to the probe-formation trick.</div>
     </div>
     <div class="logo-card" aria-hidden="true">
       <img src="ntm_logo.jpeg" alt="Sketch showing a stargate, a Machariel camp, an explosion, and a safe bookmark star">
@@ -54,10 +54,19 @@
   </div>
 </header>
 <section class="quick-help">
-  <div><b>Black star:</b> one bookmark that clears <i>every</i> gate in the system at once — the main idea. Drag it, or hit Re-pick for another spot.</div>
-  <div><b>Green cloud:</b> positions that clear your angle threshold. <b>Blue cloud:</b> everywhere a bookmark is reachable.</div>
-  <div><b>Per-gate BMs:</b> tick the box for individual close-to-gate perches when one shared bookmark isn't enough.</div>
+  <div><b style="color:#111">Black star:</b> one bookmark that clears <i>every</i> gate in the system at once — the main idea. Drag it, or hit Re-pick for another spot.</div>
+  <div><b style="color:#3fa34d">Green cloud:</b> positions that clear your angle threshold. <b style="color:#5a8fc0">Blue cloud:</b> everywhere a bookmark is reachable.</div>
 </section>
+<div class="wrap" style="padding-bottom:0">
+  <div class="card hero-card" style="flex:1 1 100%">
+    <div class="hero-head">
+      <div class="hero-title" id="herotitle">Your personal, random bookmark</div>
+      <div class="hero-status" id="herostatus">—</div>
+    </div>
+    <div class="hero-foot" style="margin:0 0 10px">Warp the route below and drop a bookmark (<b>Ctrl+B</b>) at the marked spot. That single bookmark keeps your warp-in off every gate line in the system. <button id="heroRepick" class="sec" style="margin-left:6px">Re-pick</button></div>
+    <ol class="hero-steps" id="herosteps"></ol>
+  </div>
+</div>
 <div class="wrap">
   <div class="card">
     <div class="readout">min clearance across gates: <span id="kpi" class="kpi">--</span></div>
@@ -69,6 +78,8 @@
       <span><span class="sw" style="background:#e8a317"></span>sun</span>
       <span><span class="sw" style="background:#7b4fb0"></span>planet</span>
       <span><span class="sw" style="background:#b39ddb"></span>moon</span>
+      <span><span class="sw" style="background:transparent;border:1.4px solid #b5892f;box-sizing:border-box"></span>belt</span>
+      <span><span class="sw" style="background:#2a9d8f;border-radius:2px"></span>station</span>
       <span><span class="sw" style="background:#d1495b;border-radius:2px"></span>gate</span>
       <span id="legend-gatebm" style="display:none"><span class="sw star-swatch gate-star"></span>gate bookmark</span>
       <span><span class="sw star-swatch shared-star"></span>shared bookmark</span>
@@ -84,7 +95,7 @@
   </div>
 </div>
 <footer class="footer-note">
-  <p>This tool is free and always will be. If you run into trouble or just want to say thanks with a bit of ISK, I'm <strong>Kahre</strong> in-game. Always happy to hear from you. o7</p>
+  <p>This tool is free and always will be. If you run into trouble or just want to say hi, I'm <strong>Kahre</strong> in-game. Always happy to hear from you. o7</p>
   <p class="disclaimer">This tool is a geometry planner, not a safety guarantee: it models gate-to-gate warp-in angles only and cannot see cloaks, bubbles, or live d-scan. Single-gate systems are not evaluated. Provided as-is, with no warranty — use at your own risk and judgement.</p>
   <p class="disclaimer">This material is used with limited permission of CCP Games. No official affiliation or endorsement by CCP Games is stated or implied. EVE Online and all related materials are the intellectual property of CCP hf.</p>
 </footer>

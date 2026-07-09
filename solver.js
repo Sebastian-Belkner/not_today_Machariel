@@ -57,19 +57,39 @@ function frac(f, a, b){
 }
 
 // ---- parse a raw system record into working geometry ----------------------
-// Mirrors from_json(): named = sun + planets + gates (NOT moons); verts adds moons.
+// Mirrors from_json(): named = sun + planets + gates + belts + stations
+// (permanent warpable anchors, NOT moons); verts adds moons for the hull.
 export function fromRaw(sys){
   const sun = (sys.sun || [0,0,0]).map(Number);
   const planets = (sys.planets||[]).map((p,i)=>({name:p.name||`P${i+1}`, pos:[+p.x,+p.y,+p.z]}));
   const moons   = (sys.moons||[]).map((m,i)=>({name:m.name||`Moon${i+1}`, pos:[+m.x,+m.y,+m.z]}));
   const gates   = (sys.gates||[]).map((g,i)=>({name:g.name||`Gate${i+1}`, pos:[+g.x,+g.y,+g.z], color:PALETTE[i%PALETTE.length]}));
+  const belts   = (sys.belts||[]).map((b,i)=>({name:b.name||`Belt${i+1}`, pos:[+b.x,+b.y,+b.z]}));
+  const stations= (sys.stations||[]).map((s,i)=>({name:s.name||`Station${i+1}`, pos:[+s.x,+s.y,+s.z]}));
+  // The bookmark pool is O(anchors^2); belts/stations can be numerous (20+ belts
+  // in some systems), which would explode the pool and slow the solve.  Cap how
+  // many EXTRA anchors they contribute -- stations first (usually more useful,
+  // fewer), then a spread of belts -- while sun/planets/gates always stay.
+  const EXTRA_ANCHOR_CAP = 16;
+  const extraAnchors = [];
+  for(const s of stations){ if(extraAnchors.length>=EXTRA_ANCHOR_CAP) break; extraAnchors.push({name:s.name,pos:s.pos}); }
+  if(belts.length && extraAnchors.length<EXTRA_ANCHOR_CAP){
+    const room = EXTRA_ANCHOR_CAP - extraAnchors.length;
+    // evenly sample belts so we get spatial spread rather than the first few
+    const step = Math.max(1, Math.floor(belts.length/room));
+    for(let i=0;i<belts.length && extraAnchors.length<EXTRA_ANCHOR_CAP;i+=step){
+      extraAnchors.push({name:belts[i].name,pos:belts[i].pos});
+    }
+  }
   const named = [{name:'Sun', pos:sun},
     ...planets.map(p=>({name:p.name,pos:p.pos})),
-    ...gates.map(g=>({name:g.name,pos:g.pos}))];
-  const verts = [sun, ...planets.map(p=>p.pos), ...moons.map(m=>m.pos), ...gates.map(g=>g.pos)];
+    ...gates.map(g=>({name:g.name,pos:g.pos})),
+    ...extraAnchors];
+  const verts = [sun, ...planets.map(p=>p.pos), ...moons.map(m=>m.pos),
+    ...gates.map(g=>g.pos), ...belts.map(b=>b.pos), ...stations.map(s=>s.pos)];
   return {
     name: sys.name||'', region: sys.region||'', security: sys.security ?? null,
-    sun, planets, moons, gates, named, verts, hullEq: sys.hull || null,
+    sun, planets, moons, gates, belts, stations, named, verts, hullEq: sys.hull || null,
   };
 }
 
@@ -523,6 +543,8 @@ function publicSystem(S){
   return {name:S.name, region:S.region, security:S.security, sun:xyz(S.sun),
     planets:S.planets.map(p=>({name:p.name,pos:xyz(p.pos)})),
     moons:S.moons.map(m=>({name:m.name,pos:xyz(m.pos)})),
+    belts:(S.belts||[]).map(b=>({name:b.name,pos:xyz(b.pos)})),
+    stations:(S.stations||[]).map(s=>({name:s.name,pos:xyz(s.pos)})),
     gates:S.gates.map(g=>({name:g.name,pos:xyz(g.pos),color:g.color}))};
 }
 export function systemSummary(i, sys){
